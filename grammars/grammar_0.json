@@ -1,0 +1,17 @@
+{
+    "<start>": [["<!DOCTYPE html>", "<html_element>"]],
+    "<html_element>": [["<", "html", "<html_attributes>", ">", "<html_content>", "</", "html", ">"]],
+    "<html_attributes>": [[" ", "lang", "=", "\\\"", "en", "\\\""]],
+    "<html_content>": [["<head_element>", "<body_element>"]],
+    "<head_element>": [["<", "head", ">", "<head_content>", "</", "head", ">"]],
+    "<head_content>": [["<meta_charset>", "<meta_viewport>", "<title_element>"]],
+    "<meta_charset>": [["<", "meta", " ", "charset", "=", "\\\"", "UTF-8", "\\\"", ">"]],
+    "<meta_viewport>": [["<", "meta", " ", "name", "=", "\\\"", "viewport", "\\\"", " ", "content", "=", "\\\"", "width=device-width, initial-scale=1.0", "\\\"", ">"]],
+    "<title_element>": [["<", "title", ">", "H5 JavaScript Example", "</", "title", ">"]],
+    "<body_element>": [["<", "body", ">", "<body_content>", "</", "body", ">"]],
+    "<body_content>": [["<h1_element>", "<button_element>", "<script_element>"]],
+    "<h1_element>": [["<", "h1", ">", "Hello, World!", "</", "h1", ">"]],
+    "<button_element>": [["<", "button", " ", "onclick", "=", "\\\"", "changeText()", "\\\"", ">", "Click Me", "</", "button", ">"]],
+    "<script_element>": [["<", "script", ">", "<js_code>", "</", "script", ">"]],
+    "<js_code>": [["<AI:{JavaScript code}>"]]
+}
