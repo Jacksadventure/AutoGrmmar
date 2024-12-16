@@ -14,3 +14,4 @@ def get_responce(prompt: str, model: str, text: str):
     ]
     response = target_model.invoke(message)
     return response
+

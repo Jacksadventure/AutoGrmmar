@@ -44,41 +44,6 @@ you can add rules like:
     You don't need to add AI placeholder into non-terminals just taking them as terminals.
 """
 
-program_enhance_prompt = """
-You are a grammar detailer and enhancer. Your task is to take an existing grammar written in JSON format and improve it by adding more details, specificity, correct mistakes and explicit rules makes it more adhare to the example. Follow these guidelines when enhancing the grammar:
-You will receive a JSON grammar, a despction of what user want and 5 instances. Your task is to modify the grammar according to the problems of the instances.
-please make sure that the output must be a single JSON object with no additional explanations or comments. Always start with <start>.
-"""
-
-evaluator_prompt = """
-You are a prompt evaluator. Your task is to return "yes" or "no" according to the description and the validity of all 5 instances.
-
-It most of instances looks good, can be used for fuzzing, return "yes". Otherwise, return "no".
-
-For example:
-Description: C programming language with GNU feature "label as value"
-Instance:
-int main() {
-    void *ptr = &&label;
-    goto *ptr;
-    label:
-        return 0;
-}
-
-This is a valid instance. Contribute to "yes".
-
-Another example:
-Description: C programming language with GNU feature "label as value"
-Instance:
-intmain() {
-    void *ptr = &&label;
-    goto *
-    return 0;
-}
-
-This is invalid instance. Contribute to "no".
-"""
-
 get_example_propmpt = """
 You are a code generator. your jpb is to genetrator code based on the user's description. Please strictly follow the user’s requirements.
 NO COMMENTS, NO ```, NO anything else. Just the code.
@@ -108,70 +73,13 @@ def get_task_type(description: str) -> str:
         return "input"
     return "input" # default to input if not recognized
 
-def create_chat_completion(system_prompt: str, user_prompt: str, model: str = "gpt-4o",temperature=0.0) -> str:
-    """
-    Create a chat completion given a system prompt and a user prompt.
-    """
-    try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt.strip()},
-                {"role": "user", "content": user_prompt.strip()}
-            ],
-            temperature=temperature
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Error creating chat completion: {e}")
-        return None
-
-# o1-preview model don't support system prompt
-def create_chat_completion_o1(system_prompt: str, user_prompt: str) -> str:
-    """
-    Create a chat completion given a system prompt and a user prompt.
-    """
-    try:
-        response = openai.ChatCompletion.create(
-            model="o1-mini",
-            messages=[
-                {"role": "user", "content": system_prompt.strip()+"\n"+user_prompt.strip()}
-            ],
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"Error creating chat completion: {e}")
-        return None
-
-def get_grammar(description: str,use_o1=False) -> str:
+def get_grammar(description: str) -> str:
     """
     Generate a grammar JSON using the auto_grammar_prompt and the given description.
     """
-    if use_o1:
-        result = create_chat_completion_o1(auto_grammar_prompt, description)
-    else:
-        result = create_chat_completion(auto_grammar_prompt, description, temperature=0.0,model="gpt-4o-2024-11-20")
+    result = get_responce(auto_grammar_prompt, "qwen2.5:72b", description)
     return result if result else ""
 
-def grammar_evaluate(description: str, instances: list[str]) -> bool:
-    """
-    Evaluate if all instances are valid. Returns True if "yes", False otherwise.
-    """
-    user_input = description + "\n" + "\n".join(instances)
-    result = create_chat_completion(evaluator_prompt, user_input)
-    if result is not None:
-        return "yes" in result.lower()
-    return False
-
-def enhance_grammar(grammar: str,description:str,example:str,instances: list[str],use_o1=False) -> str:
-    """
-    Enhance the given grammar based on provided instances and program_enhance_prompt.
-    """
-    if use_o1:
-        result = create_chat_completion_o1(program_enhance_prompt, grammar + "\n" +"example:\n" + example+ description+"\n".join(instances))
-    else:
-        result = create_chat_completion(program_enhance_prompt, grammar + "\n" +description+"\n".join(instances))
-    return result if result else grammar
 
 def compile_fuzzer():
     """
@@ -314,13 +222,6 @@ def fuzz_with_grammar(batch_size=1000, timeout=140):
             except PermissionError as e:
                 print(f"Permission error for {cmd}: {e}")
         time.sleep(0.2)
-
-def evaluate_grammar(description: str, instances:list[str]) -> bool:
-    user_input = description + "\n" + "\n".join(instances)
-    result = get_responce(evaluator_prompt,"Phi3:14b", user_input)
-    if "yes" in result.lower():
-        return True
-    return False
 
 def get_placeholders(grammar: str) -> list[str]:
     """
