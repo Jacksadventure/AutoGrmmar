@@ -5,6 +5,7 @@ import subprocess
 import os
 import stat
 import time
+import re
 from localai import get_responce
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
@@ -28,7 +29,7 @@ Here is an example of the required structure:
 }
 
 You must generate a fully detailed grammar in JSON format, ensuring that:
-    •   Every rule is expanded without assumptions or shortcuts.AI
+    •   Every rule is expanded without assumptions or shortcuts.
     •   The grammar is fully explicit and suitable for processing directly as JSON.
     •   The output must be a single JSON object with no additional explanations or comments. Always start with <start>.
     •   Escape characters need to be handled properly.
@@ -37,14 +38,10 @@ You must generate a fully detailed grammar in JSON format, ensuring that:
 H5 page probable contains javascript code.
 you can add rules like:
 "<js_code>": [["<script>", "<AI:{need java script code}>", "</script>"]],
-    •   If the grammar is too complex, you can also add sub-grammar like <SUBGRAMMAR:{Description of demand in details}> as a placeholder.
-    for example:
-H5 page probable contains javascript code.
-you can add rules like:
-"<js_code>": [["<script>", "<SUBGRAMMAR:{need java script code}>", "</script>"]],
-    •   If some items in the grammar are need to be calculated, you can use <SCRIPT:{Description of demand in details}> as a placeholder.
-    for example:
-    "<random_string>": [["\"","<SCRIPT:{need a random string}>"],"\""]
+    because local AI CANNOT see the context of grammar, so when you want to add these placeholders, please provide all the details, as detailed as possible in the description. so that local AI would know what they should generate.
+    So you should not say "other elements" or "other tags" in the grammar. Local AI cannot understand.
+    AI is expensive, so please use it wisely. It can only code,others you should manage to generate directly. no more than 5 AI placeholder.
+    You don't need to add AI placeholder into non-terminals just taking them as terminals.
 """
 
 program_enhance_prompt = """
@@ -84,7 +81,7 @@ This is invalid instance. Contribute to "no".
 
 get_example_propmpt = """
 You are a code generator. your jpb is to genetrator code based on the user's description. Please strictly follow the user’s requirements.
-NO COMMENTS, NO ‘’‘, NO anything else. Just the code.
+NO COMMENTS, NO ```, NO anything else. Just the code.
 If not requested by the user, please do not add any unnecessary libraries or functions.
 You don’t have to make this function meaningful.
 for example:
@@ -109,6 +106,7 @@ def get_task_type(description: str) -> str:
         return "code"
     elif "input" in result.lower():
         return "input"
+    return "input" # default to input if not recognized
 
 def create_chat_completion(system_prompt: str, user_prompt: str, model: str = "gpt-4o",temperature=0.0) -> str:
     """
@@ -135,7 +133,7 @@ def create_chat_completion_o1(system_prompt: str, user_prompt: str) -> str:
     """
     try:
         response = openai.ChatCompletion.create(
-            model="o1-preview",
+            model="o1-mini",
             messages=[
                 {"role": "user", "content": system_prompt.strip()+"\n"+user_prompt.strip()}
             ],
@@ -145,16 +143,15 @@ def create_chat_completion_o1(system_prompt: str, user_prompt: str) -> str:
         print(f"Error creating chat completion: {e}")
         return None
 
-def get_grammar(description: str,example: str,use_o1=False) -> str:
+def get_grammar(description: str,use_o1=False) -> str:
     """
     Generate a grammar JSON using the auto_grammar_prompt and the given description.
     """
     if use_o1:
-        result = create_chat_completion_o1(auto_grammar_prompt, description+"example:\n"+example)
+        result = create_chat_completion_o1(auto_grammar_prompt, description)
     else:
-        result = create_chat_completion(auto_grammar_prompt, description+"example:\n"+example, temperature=0.0,model="gpt-4o-2024-11-20")
+        result = create_chat_completion(auto_grammar_prompt, description, temperature=0.0,model="gpt-4o-2024-11-20")
     return result if result else ""
-
 
 def grammar_evaluate(description: str, instances: list[str]) -> bool:
     """
@@ -166,7 +163,6 @@ def grammar_evaluate(description: str, instances: list[str]) -> bool:
         return "yes" in result.lower()
     return False
 
-
 def enhance_grammar(grammar: str,description:str,example:str,instances: list[str],use_o1=False) -> str:
     """
     Enhance the given grammar based on provided instances and program_enhance_prompt.
@@ -176,7 +172,6 @@ def enhance_grammar(grammar: str,description:str,example:str,instances: list[str
     else:
         result = create_chat_completion(program_enhance_prompt, grammar + "\n" +description+"\n".join(instances))
     return result if result else grammar
-
 
 def compile_fuzzer():
     """
@@ -191,17 +186,15 @@ def compile_fuzzer():
     except subprocess.CalledProcessError as e:
         print("Error compiling fuzzer:", e)
 
-
 def ensure_executable(file_path):
     """
     Ensure the given file has executable permissions.
     """
     try:
-        current_permissions = stat.S_IMODE(os.lstat(file_path).st_mode)
+        current_permissions = os.stat(file_path).st_mode
         os.chmod(file_path, current_permissions | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     except OSError as e:
         print(f"Error setting executable permissions on {file_path}: {e}")
-
 
 def get_instance(grammar: str) -> str:
     """
@@ -232,13 +225,14 @@ def get_instance(grammar: str) -> str:
 
         res = subprocess.run(["./temp_output"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # delete the temporary files
+        # delete the temporary grammar file
         os.remove(temp_grammar_path)
         return res.stdout.decode("utf-8")   
     except subprocess.CalledProcessError as e:
         print("Error generating or compiling instance:", e)
         # delete the temporary files
-        os.remove(temp_grammar_path)
+        if os.path.exists(temp_grammar_path):
+            os.remove(temp_grammar_path)
         return ""
 
 def save_grammars(grammars: list[str]):
@@ -258,54 +252,65 @@ def get_example(description: str,tasktp:str) -> str:
         result = get_responce(get_example_propmpt, "qwen2.5-coder:14b", description)
     else:
         result = get_responce(get_example_propmpt, "Phi3:14b", description)
+    # remove lines ```xxxx in the begining and end of the result
+    lines = result.split("\n")
+    if len(lines) > 1 and lines[0].startswith("```") and lines[-1].startswith("```"):
+        result = "\n".join(lines[1:-1])
     return result
 
-def ensure_executable(file_path):
-    """
-    Ensure the given file has executable permissions.
-    """
-    try:
-        current_permissions = os.stat(file_path).st_mode
-        os.chmod(file_path, current_permissions | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    except OSError as e:
-        print(f"Error setting executable permissions on {file_path}: {e}")
+# def get_example(description: str,tasktp:str) -> str:
+#     """
+#     Get an example based on the given description.
+#     """
+#     result = get_responce(get_example_propmpt, "Phi3:14b", description)
+#     # remove lines ```xxxx in the begining and end of the result
+#     lines = result.split("\n")
+#     if len(lines) > 1 and lines[0].startswith("```") and lines[-1].startswith("```"):
+#         result = "\n".join(lines[1:-1])
+#     return result
 
 def fuzz_with_grammar(batch_size=1000, timeout=140):
     """
-    Fuzz using a previously compiled grammar-based program.
+    Fuzz using the grammar defined in grammar_0.json only.
     """
 
     os.makedirs("outputs", exist_ok=True)
-    num_grammars = len([name for name in os.listdir("grammars") if name.endswith(".json")])
-    for i in range(num_grammars):
-        try:
-            subprocess.run(
-                ["./fuzzer", "-p", f"grammars/grammar_{i}.json", "-c", "1", "-d", "10", "-o", f"output_{i}.c"],
-                check=True
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"Error compiling grammar_{i}: {e}")
 
-    # compile the generated output C files
-    for i in range(num_grammars):
-        try:
-            subprocess.run(["clang", f"output_{i}.c", "-o", f"output_{i}"], check=True)
-            ensure_executable(f"output_{i}")
-        except subprocess.CalledProcessError as e:
-            print(f"Error compiling output_{i}.c: {e}")
+    # Compile the single grammar-based program
+    try:
+        subprocess.run(
+            ["./fuzzer", "-p", "grammars/grammar_0.json", "-c", "1", "-d", "10", "-o", "output_0.c"],
+            check=True
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error compiling grammar_0.json: {e}")
+        return
 
+    # Compile the generated C file
+    try:
+        subprocess.run(["clang", "output_0.c", "-o", "output_0"], check=True)
+        ensure_executable("output_0")
+    except subprocess.CalledProcessError as e:
+        print(f"Error compiling output_0.c: {e}")
+        return
+    
+    grammar = open("grammars/grammar_0.json").read()
+    placeholders = get_placeholders(grammar)
+
+    # Run the compiled binary batch_size times
     for i in range(batch_size):
-        grammar_index = random.randint(0, num_grammars - 1)
         output_file = f"outputs/output_{i}.txt"
         with open(output_file, "w") as f:
             try:
-                cmd = [f"./output_{grammar_index}"]
-                subprocess.run(cmd, stdout=f, timeout=timeout)
+                cmd = ["./output_0"]
+                pos = subprocess.run(cmd, stdout=subprocess.PIPE, timeout=timeout)
+                text = pos.stdout.decode("utf-8")
+                replace_all_placeholders(text, placeholders)
                 print(f"Generated output_{i}.txt")
             except subprocess.TimeoutExpired:
-                print(f"Timeout running grammar_{grammar_index}")
+                print("Timeout running grammar_0 program")
             except subprocess.CalledProcessError as e:
-                print(f"Error running grammar_{grammar_index}: {e}")
+                print(f"Error running grammar_0 program: {e}")
             except PermissionError as e:
                 print(f"Permission error for {cmd}: {e}")
         time.sleep(0.2)
@@ -317,73 +322,64 @@ def evaluate_grammar(description: str, instances:list[str]) -> bool:
         return True
     return False
 
-def main():
+def get_placeholders(grammar: str) -> list[str]:
+    """
+    Get all placeholders from the given grammar. 
+    We'll look for <AI:{...}> patterns.
+    """
+    import re
+    pattern = r"<AI:\{([^}]+)\}>"
+    matches = re.findall(pattern, grammar)
+    return matches
 
+
+
+def replace_all_placeholders(text, placeholders):
+    pattern = r"<AI:\{[^}]+\}>"
+    while re.search(pattern, text):
+        for p in placeholders:
+            desc = p.strip()
+            ttype = get_task_type(desc)
+            example = get_example(desc, ttype)
+            placeholder_pattern = f"<AI:{{{desc}}}>"
+            text = re.sub(re.escape(placeholder_pattern), example.strip(), text)
+    return text
+
+
+def main():
     # Compile the fuzzer
     compile_fuzzer()
 
+    # if grammars is not empty, read from files and fuzz
+    if len(os.listdir("grammars")) > 0:
+        fuzz_with_grammar()
+    
     # Initial description from CLI
+    if len(sys.argv) < 2:
+        print("Please provide a description.")
+        sys.exit(1)
+
     description = sys.argv[1]
 
-    # Get task type
-    task_type = get_task_type(description)
-    print("Task type:", task_type)
-    template = get_example(description,task_type)
-    print("+++++++++++++++++++++++++++++++++++++++++++++++++++")
-    print(template)
-    print("+++++++++++++++++++++++++++++++++++++++++++++++++++")
-    # Generate initial grammar
+    initial_grammar = get_grammar(description,use_o1=True)
+    save_grammars([initial_grammar])
+    # get place holders from initial grammar
+    placeholders = get_placeholders(initial_grammar)
+    print("Placeholders:", placeholders)
 
-
-    initial_grammar = get_grammar(description,template)
-    if not initial_grammar:
-        print("Failed to generate initial grammar.")
+    # Get an instance from the grammar
+    text = get_instance(initial_grammar)
+    if not text.strip():
+        print("No instance generated or instance empty.")
         return
 
-    grammars = [initial_grammar]
+    # If there are placeholders, replace them in the instance
+    if placeholders:
+        text = replace_all_placeholders(text, placeholders)
 
-    for index, gram in enumerate(grammars):
-        attempts = 0
-        print(f"Enhancing grammar {index}...")
-        while attempts < MAX_ENHENCEMENT_ATTEMPTS:
-            print(f"Attempt {attempts + 1}")
-            # Generate instances
-            instances = []
-            for _ in range(5):
-                instance = get_instance(gram)
-                print("Instance:\n", instance)
-                if instance.strip():
-                    instances.append(instance)
-                else:
-                    # If instance generation failed, try again or break
-                    instances.append("")  # mark empty if failed
-            # Evaluate grammar
-            if grammar_evaluate(description, instances):
-                print("Grammar is good enough.")
-                # Grammar is good enough, break out of enhancement attempts
-                break
-            else:
-                # Enhance grammar
-                print("Not good enough, Enhancing grammar...")
-                if attempts == MAX_ENHENCEMENT_ATTEMPTS - 1:
-                    print("task is too complex, enable o1-preview model.")
-                    gram = get_grammar(description,template,use_o1=True)
-                else:
-                    gram = enhance_grammar(gram,description,template,instances)
-                grammars[index] = gram
-            attempts += 1
-            sleep_time = random.randint(5,10)
-            time.sleep(sleep_time)
-    # Save final grammars
-    save_grammars(grammars)
+    # Print the final instance with placeholders resolved
+    print("Final instance:\n", text)
 
-    # Example fuzzing loop with the final grammar (optional)
-    # This would require that you have compiled grammar-based executables.
-    # Here we just print a message.
-    print("Grammars saved and ready for fuzzing.")
-    print("Run fuzz_with_grammar to start fuzzing.")
-    fuzz_with_grammar()
-
-
+    # fuzz_with_grammar(placeholders)
 if __name__ == "__main__":
     main()
