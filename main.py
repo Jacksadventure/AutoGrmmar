@@ -1,5 +1,4 @@
 import sys
-import openai
 import random
 import subprocess
 import os
@@ -7,8 +6,6 @@ import stat
 import time
 import re
 from localai import get_responce
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 MAX_ENHENCEMENT_ATTEMPTS = 5
 
