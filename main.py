@@ -1,5 +1,4 @@
 import sys
-import openai
 import random
 import subprocess
 import os
@@ -7,8 +6,6 @@ import stat
 import time
 import re
 from localai import get_responce
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
 
 MAX_ENHENCEMENT_ATTEMPTS = 5
 
@@ -262,7 +259,7 @@ def main():
 
     description = sys.argv[1]
 
-    initial_grammar = get_grammar(description,use_o1=True)
+    initial_grammar = get_grammar(description)
     save_grammars([initial_grammar])
     # get place holders from initial grammar
     placeholders = get_placeholders(initial_grammar)
