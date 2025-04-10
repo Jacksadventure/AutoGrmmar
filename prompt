@@ -1,8 +1,0 @@
-    •   If the grammar is too complex, you can also add sub-grammar like <SUBGRAMMAR:{Description of demand in details}> as a placeholder.
-    for example:
-H5 page probable contains javascript code.
-you can add rules like:
-"<js_code>": [["<script>", "<SUBGRAMMAR:{need java script code}>", "</script>"]],
-    •   If some items in the grammar are need to be calculated, you can use <SCRIPT:{Description of demand in details}> as a placeholder.
-    for example:
-    "<random_string>": [["\"","<SCRIPT:{need a random string}>"],"\""]
